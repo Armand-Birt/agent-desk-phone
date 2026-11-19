@@ -11,7 +11,7 @@
 <meta name="robots" content="noindex">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-180.png">
-<link rel="stylesheet" href="blocks.css?v8">
+<link rel="stylesheet" href="blocks.css?v9">
 <title>Agent Desk</title>
 <style>
   :root { --bg: #fff; --text: #37352f; --muted: #787774; --faint: #a5a29a; --border: #e9e9e7; --soft: #f7f6f3; --accent: #2383e2; --ok: #448361; --bad: #d44c47; --note: #fbf3db;
@@ -145,7 +145,7 @@
   <div id="v-note" class="view">
     <div class="pad-head">
       <h1>Notepad</h1>
-      <span id="pad-state" class="faint small">v8</span>
+      <span id="pad-state" class="faint small">v9</span>
       <span class="spacer"></span>
       <select id="lang" class="lang" aria-label="Dictation language"><option value="zh-CN">中文</option><option value="en-US">English</option></select>
       <button id="pad-new" class="btn primary" type="button">＋ Note</button>
@@ -179,7 +179,7 @@
       <div class="card">
         <h2>Account</h2>
         <div id="who" class="muted small"></div>
-        <div class="faint small" style="margin-top:4px">Page version v8</div>
+        <div class="faint small" style="margin-top:4px">Page version v9</div>
         <p style="margin:12px 0 0"><button id="signout" class="btn" type="button">Sign out</button></p>
       </div>
       <div class="card">
@@ -235,11 +235,11 @@
       el.onclick = () => el.remove();
       document.body.appendChild(el);
     }
-    el.textContent = `Something went wrong (v8). Tell Claude this line:\n${text}`;
+    el.textContent = `Something went wrong (v9). Tell Claude this line:\n${text}`;
   }
 </script>
-<script src="supabase.js?v8"></script>
-<script src="blocks.js?v8"></script>
+<script src="supabase.js?v9"></script>
+<script src="blocks.js?v9"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -318,29 +318,25 @@
     if (tab === 'note') (loadPad({ quiet: true }), loadNotes());
   });
 
-  // ---- Reading aloud (voice mode): the reply is turned into speech by the cloud function and played like any
-  // sound file (which a phone plays even in silent mode, once you've tapped the page); if that isn't available,
-  // the phone's own voices read it. Code is left out. ----
+  // ---- Reading aloud (voice mode): the phone's own voices (free, on the phone). A reply is read sentence by
+  // sentence, code left out. A phone only lets a page speak after a tap, so each tap that may lead to a reply
+  // "unlocks" it; if a reply still isn't spoken, a tap on 🎧 reads it. ----
   const synth = window.speechSynthesis;
-  const player = new Audio();
-  player.playsInline = true;
   let speakingBtn = null;
-  let waitingAudio = null; // a reply the phone wouldn't play without a tap
+  let waitingText = ''; // a reply the phone wouldn't read without a tap
   const doneSpeaking = () => speakingBtn?.classList.remove('speaking');
-  player.onended = doneSpeaking;
   const stopSpeaking = () => {
-    player.pause();
     synth?.cancel();
-    waitingAudio = null;
+    waitingText = '';
     doneSpeaking();
   };
-  // (a phone only lets a page make sound after a tap: play a moment of silence on each tap that may lead to a reply)
-  const SILENCE = 'data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
   const unlockSpeech = () => {
-    if (!player.paused) return;
-    player.src = SILENCE;
-    player.play().catch(() => {});
+    if (!synth || synth.speaking) return;
+    const u = new SpeechSynthesisUtterance('.');
+    u.volume = 0;
+    synth.speak(u);
   };
+  synth?.getVoices(); // (some phones only have their list of voices ready after it's been asked for once)
   const plainFor = (text) =>
     String(text || '')
       .replace(/```[\s\S]*?```/g, ' (code) ')
@@ -349,41 +345,34 @@
       .replace(/^\s*([#>*+-]|\d+[.)])\s+/gm, '')
       .replace(/[*_~|]/g, '')
       .trim();
-  async function speak(text, btn) {
+  // byTap: you just tapped (so the phone will allow it); else check that it really started.
+  function speak(text, btn, byTap = false) {
+    if (!synth) return banner('This browser can’t read aloud.');
     stopSpeaking();
-    let plain = plainFor(text);
+    const plain = plainFor(text);
     if (!plain) return;
-    if (plain.length > 3500) plain = `${plain.slice(0, 3500)}… The rest is on the screen.`;
     speakingBtn = btn || null;
     speakingBtn?.classList.add('speaking');
-    try {
-      const { data } = await db.auth.getSession();
-      const res = await fetch(`${URL_}/functions/v1/transcribe`, { method: 'POST', headers: { Authorization: `Bearer ${data.session?.access_token || ''}`, apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ speak: plain }) });
-      if (!res.ok || !(res.headers.get('Content-Type') || '').startsWith('audio/')) throw new Error((await res.json().catch(() => ({}))).error || `speech ${res.status}`);
-      player.src = URL.createObjectURL(await res.blob());
-      try {
-        await player.play();
-      } catch {
-        waitingAudio = player.src;
-        banner('Tap 🎧 to hear the reply');
-      }
-    } catch (err) {
-      speakWithPhone(plain, err.message);
-    }
-  }
-  function speakWithPhone(plain, why) {
-    if (!synth) return doneSpeaking(), banner(`Couldn’t read it aloud: ${why}`);
-    const parts = plain.match(/[^。！？.!?\n]+[。！？.!?]*\n*/g) || [plain];
+    const parts = (plain.match(/[^。！？.!?\n]+[。！？.!?]*\n*/g) || [plain]).filter((p) => p.trim());
     const voices = synth.getVoices();
+    let started = false;
     parts.forEach((p, i) => {
-      if (!p.trim()) return;
       const u = new SpeechSynthesisUtterance(p.trim());
       u.lang = /[一-鿿]/.test(p) ? 'zh-CN' : 'en-US';
       const v = voices.find((x) => x.lang === u.lang && x.localService) || voices.find((x) => x.lang?.startsWith(u.lang.slice(0, 2)));
       if (v) u.voice = v;
+      u.onstart = () => (started = true);
       if (i === parts.length - 1) u.onend = doneSpeaking;
       synth.speak(u);
     });
+    if (byTap) return;
+    setTimeout(() => {
+      if (started || synth.speaking) return;
+      synth.cancel();
+      doneSpeaking();
+      waitingText = text;
+      banner('Tap 🎧 to hear the reply');
+    }, 1200);
   }
 
   // ---- Dictation: the browser's speech recognition where it has one (else use the keyboard's 🎙 key) ----
@@ -840,10 +829,10 @@
   const paintVoice = () => $('chat-voice').classList.toggle('on', voiceOn());
   paintVoice();
   $('chat-voice').onclick = () => {
-    if (waitingAudio) {
-      waitingAudio = null;
+    if (waitingText) {
+      const t = waitingText;
       banner('');
-      return player.play().catch((err) => banner(`Couldn’t play it: ${err.message}`));
+      return speak(t, $('chat-voice'), true);
     }
     if ($('chat-voice').classList.contains('speaking')) return stopSpeaking(); // (a tap while it reads: stop reading)
     store.set('voice', voiceOn() ? '0' : '1');
