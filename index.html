@@ -11,7 +11,7 @@
 <meta name="robots" content="noindex">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-180.png">
-<link rel="stylesheet" href="blocks.css?v9">
+<link rel="stylesheet" href="blocks.css?v10">
 <title>Agent Desk</title>
 <style>
   :root { --bg: #fff; --text: #37352f; --muted: #787774; --faint: #a5a29a; --border: #e9e9e7; --soft: #f7f6f3; --accent: #2383e2; --ok: #448361; --bad: #d44c47; --note: #fbf3db;
@@ -145,7 +145,7 @@
   <div id="v-note" class="view">
     <div class="pad-head">
       <h1>Notepad</h1>
-      <span id="pad-state" class="faint small">v9</span>
+      <span id="pad-state" class="faint small">v10</span>
       <span class="spacer"></span>
       <select id="lang" class="lang" aria-label="Dictation language"><option value="zh-CN">中文</option><option value="en-US">English</option></select>
       <button id="pad-new" class="btn primary" type="button">＋ Note</button>
@@ -179,7 +179,7 @@
       <div class="card">
         <h2>Account</h2>
         <div id="who" class="muted small"></div>
-        <div class="faint small" style="margin-top:4px">Page version v9</div>
+        <div class="faint small" style="margin-top:4px">Page version v10</div>
         <p style="margin:12px 0 0"><button id="signout" class="btn" type="button">Sign out</button></p>
       </div>
       <div class="card">
@@ -235,11 +235,11 @@
       el.onclick = () => el.remove();
       document.body.appendChild(el);
     }
-    el.textContent = `Something went wrong (v9). Tell Claude this line:\n${text}`;
+    el.textContent = `Something went wrong (v10). Tell Claude this line:\n${text}`;
   }
 </script>
-<script src="supabase.js?v9"></script>
-<script src="blocks.js?v9"></script>
+<script src="supabase.js?v10"></script>
+<script src="blocks.js?v10"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -322,20 +322,50 @@
   // sentence, code left out. A phone only lets a page speak after a tap, so each tap that may lead to a reply
   // "unlocks" it; if a reply still isn't spoken, a tap on 🎧 reads it. ----
   const synth = window.speechSynthesis;
+  // A reply your computer has read aloud (its own speech model) is a sound file: played like music, which a phone
+  // does even in silent mode, once you've tapped the page.
+  const player = new Audio();
+  player.playsInline = true;
+  let waitingAudio = false; // a sound file the phone wouldn't play without a tap
   let speakingBtn = null;
   let waitingText = ''; // a reply the phone wouldn't read without a tap
   const doneSpeaking = () => speakingBtn?.classList.remove('speaking');
+  player.onended = doneSpeaking;
   const stopSpeaking = () => {
+    player.pause();
     synth?.cancel();
     waitingText = '';
+    waitingAudio = false;
     doneSpeaking();
   };
+  // (each tap that may lead to a reply: a moment of silence, and an empty phrase, so sound is allowed later)
   const unlockSpeech = () => {
+    if (player.paused && !waitingAudio) {
+      player.src = 'data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+      player.play().catch(() => {});
+    }
     if (!synth || synth.speaking) return;
     const u = new SpeechSynthesisUtterance('.');
     u.volume = 0;
     synth.speak(u);
   };
+  async function playAudio(path, btn) {
+    const { data, error } = await db.storage.from('sessions').download(path);
+    if (error || !data) return false;
+    stopSpeaking();
+    speakingBtn = btn || null;
+    speakingBtn?.classList.add('speaking');
+    player.src = URL.createObjectURL(data);
+    try {
+      await player.play();
+    } catch {
+      doneSpeaking();
+      waitingAudio = true;
+      banner('Tap 🎧 to hear the reply');
+    }
+    db.storage.from('sessions').remove([path]).then(() => {}, () => {}); // (it's on the phone now)
+    return true;
+  }
   synth?.getVoices(); // (some phones only have their list of voices ready after it's been asked for once)
   const plainFor = (text) =>
     String(text || '')
@@ -781,7 +811,7 @@
     $('chat').hidden = false;
     $('chat-title').textContent = s.title;
     $('chat-dot').className = `dot ${s.state}`;
-    Object.assign(chat, { turns: null, more: false, note: '', busy: [], failed: [], done: [], cut: Infinity, top: 0 });
+    Object.assign(chat, { turns: null, more: false, note: '', busy: [], failed: [], done: [], cut: Infinity, top: 0, awaitAudio: null });
     drawChat.last = null;
     drawChat({ scroll: true });
     fetchHistory();
@@ -811,11 +841,25 @@
     chat.busy = busy;
     chat.done = finished.filter((r) => r.id > chat.cut);
     chat.top = Math.max(0, ...finished.map((r) => r.id));
-    if (just.length && voiceOn()) speak(just[just.length - 1].result?.reply, $('chat-voice'));
+    // Voice mode: the reply is heard. Your computer reads it aloud if it can (the audio follows the text by a
+    // few seconds); otherwise the phone's own voice does.
+    if (just.length && voiceOn()) {
+      const r = just[just.length - 1];
+      if (r.result?.audio === 'pending') (chat.awaitAudio = { id: r.id, at: Date.now(), reply: r.result.reply }), banner('Preparing the audio on your computer…');
+      else if (r.result?.audio) playAudio(r.result.audio, $('chat-voice'));
+      else speak(r.result?.reply, $('chat-voice'));
+    }
+    if (chat.awaitAudio) {
+      const w = chat.awaitAudio;
+      const row = rows.find((r) => r.id === w.id);
+      const audio = row?.result?.audio;
+      if (audio && audio !== 'pending') ((chat.awaitAudio = null), banner(''), playAudio(audio, $('chat-voice')).then((ok) => ok || speak(w.reply, $('chat-voice'))));
+      else if (audio === '' || !row || Date.now() - w.at > 150_000) ((chat.awaitAudio = null), banner(''), speak(w.reply, $('chat-voice')));
+    }
     chat.failed = rows.filter((r) => r.status === 'failed' && Date.now() - Date.parse(r.created_at) < 10 * 60_000 && r.id > (chat.dismissed || 0));
     drawChat();
     if (answered) (fetchHistory(), loadSessions());
-    if (busy.length && !document.hidden) chatTimer = setTimeout(loadChat, 2500);
+    if ((busy.length || chat.awaitAudio) && !document.hidden) chatTimer = setTimeout(loadChat, 2500);
   }
   const chatChanged = () => {
     $('chat-send').disabled = !$('chat-text').value.trim();
@@ -829,6 +873,12 @@
   const paintVoice = () => $('chat-voice').classList.toggle('on', voiceOn());
   paintVoice();
   $('chat-voice').onclick = () => {
+    if (waitingAudio) {
+      waitingAudio = false;
+      banner('');
+      $('chat-voice').classList.add('speaking');
+      return player.play().catch((err) => (doneSpeaking(), banner(`Couldn’t play it: ${err.message}`)));
+    }
     if (waitingText) {
       const t = waitingText;
       banner('');
@@ -859,7 +909,7 @@
     const text = $('chat-text').value.trim();
     if (!text || !open) return;
     $('chat-send').disabled = true;
-    const { data, error } = await db.from('requests').insert({ target_device: open.device, from_device: 'phone', from_name: 'Phone', item: open.key, kind: 'message', result: { text } }).select('id,status,result,created_at').single();
+    const { data, error } = await db.from('requests').insert({ target_device: open.device, from_device: 'phone', from_name: 'Phone', item: open.key, kind: 'message', result: { text, speak: voiceOn() } }).select('id,status,result,created_at').single();
     if (error) {
       $('chat-log').insertAdjacentHTML('beforeend', `<div class="msg st bad">${esc(error.message)}</div>`);
       return chatChanged();
