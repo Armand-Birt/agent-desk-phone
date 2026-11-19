@@ -66,6 +66,7 @@
   #kb .gap { flex: 1; min-width: 6px; }
   #kb .hint { font-size: 12px; color: var(--muted); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
   #kb .done { color: var(--accent); padding: 0 10px; }
+  #banner { position: fixed; left: 10px; right: 10px; top: calc(env(safe-area-inset-top) + 8px); z-index: 60; background: var(--text); color: var(--bg); border-radius: 10px; padding: 10px 14px; font-size: 14px; box-shadow: var(--float-shadow); }
   /* note */
   .composer { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 10px; }
   textarea { width: 100%; border: 1px solid var(--border); border-radius: 14px; padding: 14px; background: var(--note); resize: none; min-height: 150px; outline: 0; }
@@ -195,6 +196,7 @@
     </div>
   </div>
 
+  <div id="banner" hidden></div>
   <div id="kb" hidden>
     <button data-kb="p" title="Text">Aa</button>
     <button data-kb="h2" title="Heading">H</button>
@@ -309,6 +311,17 @@
     'no-speech': 'Didn’t hear anything.',
   };
   let rec = null;
+  // A message that needs reading (why dictation didn't work…): across the top for a few seconds.
+  let bannerTimer = null;
+  const banner = (text) => {
+    clearTimeout(bannerTimer);
+    $('banner').textContent = text;
+    $('banner').hidden = !text;
+    if (text) bannerTimer = setTimeout(() => ($('banner').hidden = true), 9000);
+  };
+  $('banner').onclick = () => banner('');
+  // (what's being heard goes in the small hint; anything longer is a message)
+  const sayIn = (hint) => (t) => (t.length > 60 ? (banner(t), hint('')) : hint(t));
   // btn lights up while listening; onFinal(text) gets each finished phrase; say(text) shows what's being heard / what went wrong.
   function dictate(btn, { onFinal, onInterim = () => {}, say }) {
     if (rec) return rec.stop();
@@ -317,20 +330,41 @@
     rec.lang = $('lang').value;
     rec.continuous = true;
     rec.interimResults = true;
+    // What's been handed on so far, and what is still being heard. (Phones differ: some send each phrase once
+    // as final, some keep resending the whole text, some only ever send "interim" text and nothing final.)
+    let given = '';
+    let hearing = '';
+    let heard = false;
     rec.onresult = (e) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) onFinal(e.results[i][0].transcript);
-        else interim += e.results[i][0].transcript;
+      let final = '';
+      hearing = '';
+      for (let i = 0; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else hearing += e.results[i][0].transcript;
       }
-      onInterim(interim);
-      say(interim);
+      heard = heard || Boolean(final || hearing);
+      if (final.length > given.length && final.startsWith(given)) {
+        onFinal(final.slice(given.length));
+        given = final;
+      }
+      onInterim(hearing);
+      say(hearing || 'Listening…');
     };
-    rec.onerror = (e) => e.error !== 'aborted' && say(WHY[e.error] || `Dictation stopped: ${e.error}`);
+    let failed = false;
+    rec.onerror = (e) => {
+      if (e.error === 'aborted') return;
+      failed = true;
+      say(WHY[e.error] || `Dictation stopped: ${e.error}`);
+    };
     rec.onend = () => {
       rec = null;
       btn.classList.remove('on');
       onInterim('');
+      if (hearing) onFinal(hearing); // (never marked final: it's still what you said)
+      if (failed) return;
+      // Started, the microphone light came on, and nothing came back: the Home Screen app and browsers other
+      // than Safari do this on iPhone.
+      say(heard ? '' : 'Nothing came back from dictation. On iPhone it only works in Safari itself; here, use the 🎙 key on the keyboard.');
     };
     try {
       rec.start();
@@ -495,7 +529,7 @@
     const { ed, b } = at;
     if (act === 'mic') {
       return dictate(btn, {
-        say: (t) => ($('kb-hint').textContent = t),
+        say: sayIn((t) => ($('kb-hint').textContent = t)),
         onFinal: (t) => {
           if (!editing()) ed.focus(b.id);
           document.execCommand('insertText', false, t);
@@ -639,7 +673,7 @@
     const base = t.value ? `${t.value.replace(/\s+$/, '')} ` : '';
     let final = '';
     dictate($('chat-mic'), {
-      say: (m) => (t.placeholder = m && !/^Listening/.test(m) && !final && !t.value ? m : 'Message this session…'),
+      say: sayIn((m) => (t.placeholder = /^Listening/.test(m) ? 'Listening…' : 'Message this session…')),
       onFinal: (x) => ((final += x), (t.value = base + final), chatChanged()),
       onInterim: (x) => ((t.value = base + final + x), chatChanged()),
     });
