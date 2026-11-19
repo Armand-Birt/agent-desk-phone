@@ -75,6 +75,7 @@
   .spacer { flex: 1; }
   .mic { width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg); font-size: 24px; display: grid; place-items: center; flex: none; }
   .mic.small { width: 46px; height: 46px; font-size: 20px; }
+  .mic.busy, #kb button.busy { opacity: .45; }
   .mic.on { background: var(--bad); border-color: var(--bad); color: #fff; animation: pulse 1.2s ease-in-out infinite; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--bad) 22%, transparent); } }
   .lang { border: 1px solid var(--border); background: var(--bg); border-radius: 10px; padding: 9px 8px; font-size: 14px; }
@@ -301,7 +302,7 @@
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   $('lang').value = store.get('lang') || (navigator.language.startsWith('zh') ? 'zh-CN' : 'en-US');
   $('lang').onchange = () => store.set('lang', $('lang').value);
-  if (!SR) $('lang').hidden = true;
+  if (!SR || (stt === 'cloud' && window.MediaRecorder)) $('lang').hidden = true; // (the cloud transcription needs no language)
   const WHY = {
     'not-allowed': 'Microphone not allowed. Allow it for this page in Settings → Safari → Microphone, or use the keyboard’s 🎙 key.',
     'service-not-allowed': 'Dictation is off on this phone (Settings → General → Keyboard → Enable Dictation). Or use the keyboard’s 🎙 key.',
@@ -321,9 +322,70 @@
   };
   $('banner').onclick = () => banner('');
   // (what's being heard goes in the small hint; anything longer is a message)
-  const sayIn = (hint) => (t) => (t.length > 60 ? (banner(t), hint('')) : hint(t));
+  const sayIn = (hint) => (t) => (t.length > 60 ? (banner(t), hint('')) : (/^(Recording|Transcribing)/.test(t) || !t ? banner(t) : 0, hint(t)));
   // btn lights up while listening; onFinal(text) gets each finished phrase; say(text) shows what's being heard / what went wrong.
-  function dictate(btn, { onFinal, onInterim = () => {}, say }) {
+  // Preferred: record, then have the recording transcribed (the "transcribe" function on your cloud project, which
+  // understands Chinese and English mixed together). Tap to start, tap again to stop; the text arrives a few seconds
+  // later. If that function isn't there, the browser's own dictation is used instead.
+  let tape = null; // { rec, btn } while recording
+  let stt = store.get('stt') || 'cloud';
+  async function record(btn, { onFinal, say }) {
+    if (tape) return tape.rec.stop();
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      return say(err.name === 'NotAllowedError' ? 'Microphone not allowed. Allow it for this page (Settings → Safari → Microphone, or the “aA” menu in the address bar).' : `No microphone: ${err.message}`);
+    }
+    const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((t) => window.MediaRecorder?.isTypeSupported?.(t)) || '';
+    const mr = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    const chunks = [];
+    const t0 = Date.now();
+    const tick = setInterval(() => {
+      const s = Math.floor((Date.now() - t0) / 1000);
+      say(`Recording ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · tap 🎙 to finish`);
+      if (s >= 300) mr.stop(); // (five minutes at most)
+    }, 500);
+    mr.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    mr.onstop = async () => {
+      clearInterval(tick);
+      stream.getTracks().forEach((t) => t.stop());
+      tape = null;
+      btn.classList.remove('on');
+      const blob = new Blob(chunks, { type: mr.mimeType || type || 'audio/mp4' });
+      if (Date.now() - t0 < 600 || blob.size < 800) return say('');
+      btn.classList.add('busy');
+      say('Transcribing…');
+      try {
+        const { data } = await db.auth.getSession();
+        const res = await fetch(`${URL_}/functions/v1/transcribe`, { method: 'POST', headers: { Authorization: `Bearer ${data.session?.access_token || ''}`, apikey: KEY, 'Content-Type': blob.type }, body: blob });
+        if (res.status === 404) {
+          stt = 'browser';
+          return say('Transcription isn’t set up on your cloud project yet, so this used nothing. Tap 🎙 again to use the phone’s own dictation.');
+        }
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) return say(`Couldn’t transcribe: ${out.error || res.status}`);
+        say('');
+        if (out.text) onFinal(out.text);
+        else say('Didn’t catch any words in that.');
+      } catch (err) {
+        say(`Couldn’t transcribe (${err.message}). Is the phone online?`);
+      } finally {
+        btn.classList.remove('busy');
+      }
+    };
+    tape = { rec: mr, btn };
+    mr.start();
+    btn.classList.add('on');
+    say('Recording 0:00 · tap 🎙 to finish');
+  }
+  function dictate(btn, opts) {
+    if (tape) return tape.rec.stop();
+    if (btn.classList.contains('busy')) return;
+    if (stt === 'cloud' && window.MediaRecorder && navigator.mediaDevices?.getUserMedia) return record(btn, opts);
+    return browserDictate(btn, opts);
+  }
+  function browserDictate(btn, { onFinal, onInterim = () => {}, say }) {
     if (rec) return rec.stop();
     if (!SR) return say('This browser can’t dictate here: use the 🎙 key on the keyboard');
     rec = new SR();
@@ -516,14 +578,14 @@
   };
   window.visualViewport?.addEventListener('resize', placeKb);
   window.visualViewport?.addEventListener('scroll', placeKb);
-  document.addEventListener('focusin', () => ((kb.hidden = !editing()), placeKb(), $('kb-mic').hidden = !SR));
-  document.addEventListener('focusout', () => setTimeout(() => !editing() && !rec && (kb.hidden = true), 150));
+  document.addEventListener('focusin', () => ((kb.hidden = !editing()), placeKb(), $('kb-mic').hidden = !SR && !window.MediaRecorder));
+  document.addEventListener('focusout', () => setTimeout(() => !editing() && !rec && !tape && (kb.hidden = true), 150));
   kb.addEventListener('pointerdown', (e) => {
     const btn = e.target.closest('[data-kb]');
     if (!btn) return;
     e.preventDefault(); // (the keyboard stays up)
     const act = btn.dataset.kb;
-    if (act === 'done') return rec?.stop(), document.activeElement?.blur();
+    if (act === 'done') return rec?.stop(), tape?.rec.stop(), document.activeElement?.blur();
     const at = here();
     if (!at) return;
     const { ed, b } = at;
@@ -531,7 +593,11 @@
       return dictate(btn, {
         say: sayIn((t) => ($('kb-hint').textContent = t)),
         onFinal: (t) => {
-          if (!editing()) ed.focus(b.id);
+          // (at the cursor; if you've left the note meanwhile, at the end of the line you were on, else of the note)
+          if (!editing()) {
+            if (!ed.find(b.id)) return ed.appendMarkdown(t);
+            ed.focus(b.id);
+          }
           document.execCommand('insertText', false, t);
         },
       });
@@ -680,6 +746,7 @@
   };
   $('chat-send').onclick = async () => {
     rec?.stop();
+    if (tape) return tape.rec.stop(); // (finish the recording first; send once its text is in)
     const text = $('chat-text').value.trim();
     if (!text || !open) return;
     $('chat-send').disabled = true;
