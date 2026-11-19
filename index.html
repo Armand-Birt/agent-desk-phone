@@ -11,10 +11,12 @@
 <meta name="robots" content="noindex">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-180.png">
+<link rel="stylesheet" href="blocks.css">
 <title>Agent Desk</title>
 <style>
-  :root { --bg: #fff; --text: #37352f; --muted: #787774; --faint: #a5a29a; --border: #e9e9e7; --soft: #f7f6f3; --accent: #2383e2; --ok: #448361; --bad: #d44c47; --note: #fbf3db; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #191919; --text: #e6e6e4; --muted: #9b9b9b; --faint: #6f6f6f; --border: #2f2f2f; --soft: #232323; --accent: #529cca; --ok: #6fb38d; --bad: #e8736e; --note: #3a3320; } }
+  :root { --bg: #fff; --text: #37352f; --muted: #787774; --faint: #a5a29a; --border: #e9e9e7; --soft: #f7f6f3; --accent: #2383e2; --ok: #448361; --bad: #d44c47; --note: #fbf3db;
+    --hover: rgba(55,53,47,.06); --hover-strong: rgba(55,53,47,.1); --surface: #fff; --surface-2: #f7f6f3; --finished: #448361; --running: #2383e2; --waiting: #d9730d; --float-shadow: 0 4px 18px rgba(15,15,15,.14); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #191919; --text: #e6e6e4; --muted: #9b9b9b; --faint: #6f6f6f; --border: #2f2f2f; --soft: #232323; --accent: #529cca; --ok: #6fb38d; --bad: #e8736e; --note: #3a3320; --hover: rgba(255,255,255,.07); --hover-strong: rgba(255,255,255,.12); --surface: #202020; --surface-2: #232323; --finished: #6fb38d; --running: #529cca; --waiting: #e0965a; --float-shadow: 0 4px 18px rgba(0,0,0,.5); } }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
   body { display: flex; flex-direction: column; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
@@ -41,6 +43,29 @@
   .view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .scroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
+  /* notepad: every sticky note, each a block editor */
+  .pad-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px 8px; }
+  .pad-head h1 { font-size: 20px; margin: 0; }
+  #pad { padding: 2px 12px 90px; display: flex; flex-direction: column; gap: 12px; }
+  .sticky { background: var(--note); border-radius: 12px; padding: 4px 14px 10px; box-shadow: 0 1px 3px rgba(15,15,15,.08); }
+  .sticky-bar { display: flex; justify-content: flex-end; height: 22px; }
+  .sticky-bar button { border: 0; background: none; color: var(--faint); font-size: 18px; padding: 0 4px; line-height: 1; }
+  .sticky .blocks { font-size: 16px; line-height: 1.5; min-height: 2.4em; outline: 0; }
+  .blocks .blk-gutter { display: none !important; }
+  .sticky .blocks, .sticky .blocks .blk-tail { min-height: 0 !important; }
+  .sticky .blocks .blk-tail { height: 12px; flex: none; }
+  .sticky .blocks { padding-bottom: 0 !important; }
+  .blk .bc.task-link.gone .tk-status { display: none; }
+  .slash-menu { max-width: 86vw; }
+  .incoming { margin: 0 12px; }
+  /* the bar over the keyboard while you write */
+  #kb { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: flex; align-items: center; gap: 2px; padding: 5px 6px; background: var(--surface-2); border-top: 1px solid var(--border); overflow-x: auto; }
+  #kb button { flex: none; min-width: 40px; height: 38px; border: 0; border-radius: 8px; background: none; font-size: 16px; font-weight: 600; color: var(--text); }
+  #kb button:active { background: var(--hover-strong); }
+  #kb button.on { background: var(--bad); color: #fff; }
+  #kb .gap { flex: 1; min-width: 6px; }
+  #kb .hint { font-size: 12px; color: var(--muted); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
+  #kb .done { color: var(--accent); padding: 0 10px; }
   /* note */
   .composer { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 10px; }
   textarea { width: 100%; border: 1px solid var(--border); border-radius: 14px; padding: 14px; background: var(--note); resize: none; min-height: 150px; outline: 0; }
@@ -111,21 +136,21 @@
 
 <!-- 3. The app -->
 <div id="s-app" class="screen" hidden>
-  <!-- Note -->
+  <!-- Notepad: all your sticky notes, newest first; each is the same block editor as on the computer -->
   <div id="v-note" class="view">
-    <div class="composer">
-      <textarea id="note" placeholder="Jot an idea… it lands on your Notepad"></textarea>
-      <div class="row">
-        <button id="note-mic" class="mic" type="button" aria-label="Dictate">🎙</button>
-        <select id="lang" class="lang" aria-label="Dictation language"><option value="zh-CN">中文</option><option value="en-US">English</option></select>
-        <span id="note-hint" class="faint small"></span>
-        <span class="spacer"></span>
-        <button id="note-save" class="btn primary" type="button" disabled>Save</button>
-      </div>
+    <div class="pad-head">
+      <h1>Notepad</h1>
+      <span id="pad-state" class="faint small"></span>
+      <span class="spacer"></span>
+      <select id="lang" class="lang" aria-label="Dictation language"><option value="zh-CN">中文</option><option value="en-US">English</option></select>
+      <button id="pad-new" class="btn primary" type="button">＋ Note</button>
     </div>
     <div class="scroll">
-      <div class="list-h">Recent</div>
-      <div id="notes"></div>
+      <div id="pad"></div>
+      <div id="incoming" class="incoming" hidden>
+        <div class="list-h" style="padding-left:4px">On their way (from Siri or Share)</div>
+        <div id="notes"></div>
+      </div>
     </div>
   </div>
 
@@ -170,14 +195,28 @@
     </div>
   </div>
 
+  <div id="kb" hidden>
+    <button data-kb="p" title="Text">Aa</button>
+    <button data-kb="h2" title="Heading">H</button>
+    <button data-kb="ul" title="Bulleted list">•</button>
+    <button data-kb="ol" title="Numbered list">1.</button>
+    <button data-kb="todo" title="To-do">☐</button>
+    <button data-kb="out" title="Indent less">⇤</button>
+    <button data-kb="in" title="Indent more">⇥</button>
+    <button data-kb="mic" id="kb-mic" title="Dictate">🎙</button>
+    <span id="kb-hint" class="hint"></span>
+    <span class="gap"></span>
+    <button data-kb="done" class="done">Done</button>
+  </div>
   <div class="tabs">
-    <button data-tab="note" class="on"><span>🗒</span>Note</button>
+    <button data-tab="note" class="on"><span>🗒</span>Notepad</button>
     <button data-tab="sessions"><span>✳︎</span>Sessions</button>
     <button data-tab="more"><span>⚙︎</span>More</button>
   </div>
 </div>
 
 <script src="supabase.js"></script>
+<script src="blocks.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -226,7 +265,6 @@
     $('sc-auth').textContent = `${URL_}/auth/v1/token?grant_type=password`;
     $('sc-rest').textContent = `${URL_}/rest/v1/requests`;
     $('sc-key').textContent = KEY;
-    loadNotes();
     setTab(store.get('tab') || 'note');
   }
   document.addEventListener('click', (e) => {
@@ -245,7 +283,7 @@
     for (const v of ['note', 'sessions', 'more']) $(`v-${v}`).hidden = v !== t;
     for (const b of document.querySelectorAll('.tabs button')) b.classList.toggle('on', b.dataset.tab === t);
     if (t === 'sessions') loadSessions();
-    if (t === 'note') loadNotes();
+    if (t === 'note') (loadPad(), loadNotes());
   }
   document.querySelector('.tabs').addEventListener('click', (e) => {
     const b = e.target.closest('[data-tab]');
@@ -254,23 +292,27 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || !user) return;
     if (tab === 'sessions') loadSessions();
-    if (tab === 'note') loadNotes();
+    if (tab === 'note') (loadPad({ quiet: true }), loadNotes());
   });
 
   // ---- Dictation: the browser's speech recognition where it has one (else use the keyboard's 🎙 key) ----
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   $('lang').value = store.get('lang') || (navigator.language.startsWith('zh') ? 'zh-CN' : 'en-US');
   $('lang').onchange = () => store.set('lang', $('lang').value);
+  if (!SR) $('lang').hidden = true;
+  const WHY = {
+    'not-allowed': 'Microphone not allowed. Allow it for this page in Settings → Safari → Microphone, or use the keyboard’s 🎙 key.',
+    'service-not-allowed': 'Dictation is off on this phone (Settings → General → Keyboard → Enable Dictation). Or use the keyboard’s 🎙 key.',
+    'audio-capture': 'No microphone found.',
+    network: 'Speech recognition needs the internet.',
+    'language-not-supported': 'This language isn’t available for dictation here.',
+    'no-speech': 'Didn’t hear anything.',
+  };
   let rec = null;
-  function dictate(btn, field, onText) {
+  // btn lights up while listening; onFinal(text) gets each finished phrase; say(text) shows what's being heard / what went wrong.
+  function dictate(btn, { onFinal, onInterim = () => {}, say }) {
     if (rec) return rec.stop();
-    if (!SR) {
-      field.focus();
-      $('note-hint').textContent = 'Use the 🎙 key on the keyboard';
-      return;
-    }
-    const base = field.value ? `${field.value.replace(/\s+$/, '')} ` : '';
-    let final = '';
+    if (!SR) return say('This browser can’t dictate here: use the 🎙 key on the keyboard');
     rec = new SR();
     rec.lang = $('lang').value;
     rec.continuous = true;
@@ -278,69 +320,207 @@
     rec.onresult = (e) => {
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        if (e.results[i].isFinal) onFinal(e.results[i][0].transcript);
         else interim += e.results[i][0].transcript;
       }
-      field.value = base + final + interim;
-      onText();
+      onInterim(interim);
+      say(interim);
     };
-    rec.onerror = (e) => {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') $('note-hint').textContent = 'Microphone not allowed: use the keyboard’s 🎙 key';
-    };
+    rec.onerror = (e) => e.error !== 'aborted' && say(WHY[e.error] || `Dictation stopped: ${e.error}`);
     rec.onend = () => {
       rec = null;
       btn.classList.remove('on');
-      onText();
+      onInterim('');
     };
     try {
       rec.start();
       btn.classList.add('on');
-      $('note-hint').textContent = '';
-    } catch {
+      say('Listening…');
+    } catch (err) {
       rec = null;
+      say(`Couldn’t start dictation: ${err.message}`);
     }
   }
-  if (!SR) $('lang').hidden = true;
 
-  // ---- Notes: each one waits in the cloud until one of your computers puts it on the Notepad ----
-  const noteChanged = () => ($('note-save').disabled = !$('note').value.trim());
-  $('note').addEventListener('input', noteChanged);
-  $('note-mic').onclick = () => dictate($('note-mic'), $('note'), noteChanged);
-  $('note').value = store.get('draft') || '';
-  noteChanged();
-  $('note').addEventListener('input', () => store.set('draft', $('note').value));
-  $('note-save').onclick = async () => {
-    rec?.stop();
-    const text = $('note').value.trim();
-    if (!text) return;
-    $('note-save').disabled = true;
-    const { error } = await db.from('requests').insert({ target_device: '*', from_device: 'phone', from_name: 'Phone', item: 'notepad', kind: 'note', result: { text } });
-    if (error) {
-      $('note-hint').textContent = `Not saved: ${error.message}`;
-      return noteChanged();
+  // ---- Notepad: the same file as on the computer (Notepad.md, the cloud's "notepad" item): sticky notes
+  // separated by "<!-- sticky [WxH] -->". You see and edit all of them here; changes save by themselves. ----
+  const MARK = /\n*<!-- sticky(?: (\d+)x(\d+))? -->\n*/;
+  function split(body) {
+    const parts = String(body || '').split(new RegExp(MARK.source, 'g')); // [text, w, h, text, w, h, …]
+    const out = [];
+    for (let i = 0; i < parts.length; i += 3) {
+      const md = (parts[i] || '').trim();
+      const size = i >= 3 && parts[i - 2] ? { w: Number(parts[i - 2]), h: Number(parts[i - 1]) } : null;
+      if (md) out.push({ md, size });
     }
-    $('note').value = '';
-    store.set('draft', '');
-    $('note-hint').textContent = 'Saved ✓';
-    setTimeout(() => ($('note-hint').textContent = ''), 2500);
-    noteChanged();
-    loadNotes();
+    return out;
+  }
+  const join = (list) => list.filter((n) => n.md.trim()).map((n) => `<!-- sticky${n.size ? ` ${n.size.w}x${n.size.h}` : ''} -->\n\n${n.md.trim()}`).join('\n\n');
+  const pad = { version: 0, notes: [], base: [], dirty: false, saving: false, timer: null, loaded: false };
+  const padSay = (t) => ($('pad-state').textContent = t);
+  const mdOf = (n) => (n.ed ? n.ed.markdown().trim() : n.md);
+  function card(n) {
+    n.el = document.createElement('div');
+    n.el.className = 'sticky';
+    n.el.innerHTML = '<div class="sticky-bar"><button type="button" data-del title="Delete this note">×</button></div><div class="blocks"></div>';
+    n.ed = new BlockEditor(n.el.querySelector('.blocks'), {
+      onChange: () => {
+        pad.dirty = true;
+        padSay('');
+        clearTimeout(pad.timer);
+        pad.timer = setTimeout(savePad, 1500);
+      },
+      openMenu: () => {},
+      pageTargets: () => [],
+      taskInfo: () => null,
+      openLink: (href) => /^https?:/.test(href) && window.open(href, '_blank', 'noopener'),
+    });
+    n.ed.load(n.md);
+    n.el.querySelector('[data-del]').onclick = () => {
+      if (mdOf(n) && !confirm('Delete this note?')) return;
+      pad.notes = pad.notes.filter((x) => x !== n);
+      n.el.remove();
+      pad.dirty = true;
+      savePad();
+      emptyPad();
+    };
+    return n;
+  }
+  const emptyPad = () => {
+    if (!pad.notes.length) $('pad').innerHTML = '<div class="empty">No notes yet. Tap ＋ Note; it appears on the Notepad in Agent Desk too.</div>';
   };
+  function drawPad(list) {
+    pad.notes = list.map((n) => card({ ...n }));
+    $('pad').innerHTML = '';
+    for (const n of [...pad.notes].reverse()) $('pad').appendChild(n.el); // newest first
+    emptyPad();
+  }
+  const editing = () => Boolean(document.activeElement?.closest?.('#pad'));
+  async function loadPad({ quiet = false } = {}) {
+    if (pad.dirty || pad.saving) return;
+    const { data, error } = await db.from('docs').select('doc,deleted,version').eq('key', 'notepad').maybeSingle();
+    if (error) return padSay(error.message);
+    if (pad.dirty || pad.saving) return;
+    const version = data?.version || 0;
+    if (pad.loaded && version === pad.version) return;
+    if (pad.loaded && quiet && editing()) return; // (don't pull the page out from under the keyboard)
+    pad.version = version;
+    pad.loaded = true;
+    const list = data && !data.deleted ? split(data.doc?.b) : [];
+    pad.base = list.map((n) => n.md);
+    drawPad(list);
+  }
+  async function savePad() {
+    clearTimeout(pad.timer);
+    if (!pad.loaded || pad.saving || !pad.dirty) return;
+    pad.saving = true;
+    pad.dirty = false;
+    for (const n of pad.notes) n.md = mdOf(n);
+    let res;
+    try {
+      const { data, error } = await db.rpc('push_doc', { p_key: 'notepad', p_doc: { b: `${join(pad.notes)}\n` }, p_deleted: false, p_base: pad.version, p_device: 'phone' });
+      if (error) throw error;
+      res = data;
+    } catch (err) {
+      pad.saving = false;
+      pad.dirty = true;
+      padSay('Not saved yet (offline?)');
+      pad.timer = setTimeout(savePad, 6000);
+      return;
+    }
+    pad.saving = false;
+    if (res.ok) {
+      pad.version = res.row.version;
+      pad.base = pad.notes.filter((n) => n.md.trim()).map((n) => n.md);
+      padSay('Saved');
+      setTimeout(() => $('pad-state').textContent === 'Saved' && padSay(''), 1500);
+      if (pad.dirty) pad.timer = setTimeout(savePad, 800);
+      return;
+    }
+    // The computer changed it meanwhile: its notes, with the ones you changed here on top (by position), and
+    // the ones you added here at the end. Then save again.
+    const theirs = res.row.deleted ? [] : split(res.row.doc?.b);
+    const mine = pad.notes.filter((n) => n.md.trim());
+    const merged = theirs.map((t, i) => (mine[i] && i < pad.base.length && mine[i].md !== pad.base[i] ? { ...t, md: mine[i].md } : t));
+    for (const n of mine.slice(pad.base.length)) merged.push({ md: n.md, size: n.size });
+    pad.version = res.row.version;
+    pad.base = theirs.map((n) => n.md);
+    const focusMd = editing() ? mdOf(pad.notes.find((n) => n.el.contains(document.activeElement)) || {}) : null;
+    drawPad(merged);
+    if (focusMd !== null) pad.notes.find((n) => n.md === focusMd)?.ed.root.querySelector('.bc')?.focus();
+    pad.dirty = join(merged) !== join(theirs);
+    if (pad.dirty) pad.timer = setTimeout(savePad, 300);
+  }
+  $('pad-new').onclick = () => {
+    if (!pad.loaded) return;
+    const blank = pad.notes.find((n) => !mdOf(n));
+    const n = blank || card({ md: '', size: null });
+    if (!blank) {
+      if (!pad.notes.length) $('pad').innerHTML = '';
+      pad.notes.push(n);
+      $('pad').prepend(n.el);
+    }
+    n.el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    const first = n.ed.blocks[0];
+    if (first) n.ed.focus(first.id, 0);
+  };
+  setInterval(() => user && tab === 'note' && !document.hidden && loadPad({ quiet: true }), 10_000);
+  window.addEventListener('pagehide', savePad);
+  document.addEventListener('visibilitychange', () => document.hidden && savePad());
+
+  // The bar over the keyboard: turn the line you're on into a heading, a list, a to-do; indent; dictate; done.
+  const kb = $('kb');
+  const here = () => {
+    const el = document.activeElement?.closest?.('.blk');
+    const n = el && pad.notes.find((x) => x.el.contains(el));
+    const f = n && n.ed.find(el.dataset.id);
+    return f ? { n, ed: n.ed, b: f.block } : null;
+  };
+  const placeKb = () => {
+    const vv = window.visualViewport;
+    kb.style.bottom = vv ? `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px` : '0';
+  };
+  window.visualViewport?.addEventListener('resize', placeKb);
+  window.visualViewport?.addEventListener('scroll', placeKb);
+  document.addEventListener('focusin', () => ((kb.hidden = !editing()), placeKb(), $('kb-mic').hidden = !SR));
+  document.addEventListener('focusout', () => setTimeout(() => !editing() && !rec && (kb.hidden = true), 150));
+  kb.addEventListener('pointerdown', (e) => {
+    const btn = e.target.closest('[data-kb]');
+    if (!btn) return;
+    e.preventDefault(); // (the keyboard stays up)
+    const act = btn.dataset.kb;
+    if (act === 'done') return rec?.stop(), document.activeElement?.blur();
+    const at = here();
+    if (!at) return;
+    const { ed, b } = at;
+    if (act === 'mic') {
+      return dictate(btn, {
+        say: (t) => ($('kb-hint').textContent = t),
+        onFinal: (t) => {
+          if (!editing()) ed.focus(b.id);
+          document.execCommand('insertText', false, t);
+        },
+      });
+    }
+    if (act === 'in' || act === 'out') {
+      if (!['ul', 'ol', 'todo'].includes(b.type)) return;
+      b.indent = Math.max(0, Math.min(4, (b.indent || 0) + (act === 'in' ? 1 : -1)));
+      ed.render();
+      ed.focus(b.id);
+      return ed.changed();
+    }
+    ed.setType(b, b.type === act && act !== 'p' ? 'p' : act);
+  });
+
+  // Notes sent from Siri or the Share sheet wait in the cloud until one of your computers puts them on the Notepad.
   let notesTimer = null;
   async function loadNotes() {
     clearTimeout(notesTimer);
-    const { data, error } = await db.from('requests').select('id,status,result,created_at').eq('kind', 'note').order('id', { ascending: false }).limit(15);
+    const { data, error } = await db.from('requests').select('id,status,result,created_at').eq('kind', 'note').in('status', ['pending', 'working']).order('id', { ascending: false }).limit(15);
     if (error) return;
-    $('notes').innerHTML = data.length
-      ? data
-          .map((r) => {
-            const st = r.status === 'done' ? ['ok', `On your Notepad${r.result?.device ? ` · ${esc(r.result.device)}` : ''}`] : r.status === 'failed' ? ['bad', esc(r.result?.reason || 'Not saved')] : ['', 'Waiting for one of your computers'];
-            return `<div class="item"><div class="t">${esc(r.result?.text || '')}</div><div class="s ${st[0]}">${st[1]} · ${ago(r.created_at)}</div></div>`;
-          })
-          .join('')
-      : '<div class="empty">Nothing yet. What you save here appears as a new note on the Notepad in Agent Desk.</div>';
-    // (keep looking while one is still on its way)
-    if (tab === 'note' && !document.hidden && data.some((r) => r.status === 'pending' || r.status === 'working')) notesTimer = setTimeout(loadNotes, 5000);
+    $('incoming').hidden = !data.length;
+    $('notes').innerHTML = data.map((r) => `<div class="item"><div class="t">${esc(r.result?.text || '')}</div><div class="s">Waiting for one of your computers · ${ago(r.created_at)}</div></div>`).join('');
+    if (tab === 'note' && !document.hidden && data.length) notesTimer = setTimeout(() => (loadNotes(), loadPad({ quiet: true })), 5000);
   }
 
   // ---- Sessions: the ones you made reachable from your phone, on the computers that have them open ----
@@ -368,15 +548,61 @@
     const b = e.target.closest('.sess');
     if (b) openChat(sessions[Number(b.dataset.i)]);
   });
+  setInterval(() => user && tab === 'sessions' && !document.hidden && loadSessions(), 6000); // (a session you just opened to the phone shows up by itself)
+
+  // A session, as a chat: its conversation so far (asked from the computer that has it open), then what you send.
   let chatTimer = null;
+  const chat = { turns: null, more: false, note: '', busy: [], failed: [], seq: 0 };
+  const bubble = (t) => `<div class="msg ${t.kind === 'user' ? 'me' : 'cl'}">${esc(t.text)}</div>`;
+  function drawChat({ scroll = false } = {}) {
+    const el = $('chat-scroll');
+    const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    const turns = chat.turns || [];
+    const lastUser = [...turns].reverse().find((t) => t.kind === 'user')?.text;
+    const html = [
+      chat.turns === null ? `<div class="msg st">${esc(chat.note || `Getting the conversation from ${open.deviceName}…`)}</div>` : '',
+      chat.more ? '<div class="msg st">Earlier messages are on the computer</div>' : '',
+      turns.map(bubble).join(''),
+      chat.turns && !turns.length && !chat.busy.length ? '<div class="empty">Nothing in this session yet. Send a message; Claude’s reply comes back here.</div>' : '',
+      // (a message on its way: its bubble, unless the conversation already shows it, and what's happening with it)
+      chat.busy.map((r) => `${r.result?.text && r.result.text !== lastUser ? bubble({ kind: 'user', text: r.result.text }) : ''}<div class="msg st">${r.status === 'working' ? 'Claude is working…' : `Sending to ${esc(open.deviceName)}…`}</div>`).join(''),
+      chat.failed.map((r) => `${bubble({ kind: 'user', text: r.result?.text || '' })}<div class="msg st bad">${esc(r.result?.reason || 'Not delivered')}</div>`).join(''),
+    ].join('');
+    if (html === drawChat.last && !scroll) return;
+    drawChat.last = html;
+    $('chat-log').innerHTML = html;
+    if (scroll || atEnd) el.scrollTop = el.scrollHeight;
+  }
+  // Ask the computer for the conversation; its answer comes back on the request, which is then removed.
+  async function fetchHistory() {
+    const mine = ++chat.seq;
+    const s = open;
+    const { data: req, error } = await db.from('requests').insert({ target_device: s.device, from_device: 'phone', from_name: 'Phone', item: s.key, kind: 'history' }).select('id').single();
+    if (error) return ((chat.note = error.message), drawChat());
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, i < 4 ? 1200 : 2500));
+      if (open !== s || mine !== chat.seq) return db.from('requests').delete().eq('id', req.id).then(() => {});
+      const { data } = await db.from('requests').select('status,result').eq('id', req.id).maybeSingle();
+      if (!data || data.status === 'pending' || data.status === 'working') continue;
+      db.from('requests').delete().eq('id', req.id).then(() => {});
+      if (data.status === 'done') Object.assign(chat, { turns: data.result?.turns || [], more: Boolean(data.result?.more), note: '' });
+      else if (chat.turns === null) Object.assign(chat, { turns: [], note: data.result?.reason || '' });
+      return drawChat({ scroll: true });
+    }
+    db.from('requests').delete().eq('id', req.id).then(() => {});
+    if (chat.turns === null) ((chat.note = `${s.deviceName} didn’t answer. Is it awake, with Agent Desk open?`), drawChat());
+  }
   function openChat(s) {
     open = s;
     $('sess-list').hidden = true;
     $('chat').hidden = false;
     $('chat-title').textContent = s.title;
     $('chat-dot').className = `dot ${s.state}`;
-    $('chat-log').innerHTML = '';
-    loadChat(true);
+    Object.assign(chat, { turns: null, more: false, note: '', busy: [], failed: [] });
+    drawChat.last = null;
+    drawChat({ scroll: true });
+    fetchHistory();
+    loadChat();
   }
   $('chat-back').onclick = () => {
     open = null;
@@ -385,31 +611,21 @@
     $('sess-list').hidden = false;
     loadSessions();
   };
-  let lastChat = '';
-  async function loadChat(scroll) {
+  // Your messages that are still on their way or being answered (and ones that failed in the last few minutes).
+  async function loadChat() {
     clearTimeout(chatTimer);
     if (!open) return;
-    const { data, error } = await db.from('requests').select('id,status,result,created_at').eq('kind', 'message').eq('item', open.key).order('id', { ascending: false }).limit(20);
-    if (error || !open) return;
+    const s = open;
+    const { data, error } = await db.from('requests').select('id,status,result,created_at').eq('kind', 'message').eq('item', s.key).order('id', { ascending: false }).limit(8);
+    if (error || open !== s) return;
     const rows = data.reverse();
-    const html = rows.length
-      ? rows
-          .map((r) => {
-            const me = `<div class="msg me">${esc(r.result?.text || '')}</div>`;
-            if (r.status === 'done') return `${me}<div class="msg cl">${esc(r.result?.reply || '(no text in the reply)')}</div>${r.result?.state === 'waiting' ? '<div class="msg st">Claude is waiting for your input on the computer</div>' : ''}`;
-            if (r.status === 'failed') return `${me}<div class="msg st bad">${esc(r.result?.reason || 'Not delivered')}</div>`;
-            return `${me}<div class="msg st">${r.status === 'working' ? 'Claude is working…' : `Sending to ${esc(open.deviceName)}…`}</div>`;
-          })
-          .join('')
-      : '<div class="empty">Send a message to this session. Claude’s reply comes back here.</div>';
-    if (html !== lastChat) {
-      lastChat = html;
-      $('chat-log').innerHTML = html;
-      $('chat-scroll').scrollTop = $('chat-scroll').scrollHeight;
-    } else if (scroll) $('chat-scroll').scrollTop = $('chat-scroll').scrollHeight;
-    const busy = rows.some((r) => r.status === 'pending' || r.status === 'working');
-    if (busy && !document.hidden) chatTimer = setTimeout(() => loadChat(), 3000);
-    if (busy !== loadChat.busy) ((loadChat.busy = busy), loadSessions());
+    const busy = rows.filter((r) => r.status === 'pending' || r.status === 'working');
+    const answered = chat.busy.some((b) => !busy.find((r) => r.id === b.id)); // one of them just finished
+    chat.busy = busy;
+    chat.failed = rows.filter((r) => r.status === 'failed' && Date.now() - Date.parse(r.created_at) < 10 * 60_000 && r.id > (chat.dismissed || 0));
+    drawChat();
+    if (answered) (fetchHistory(), loadSessions());
+    if (busy.length && !document.hidden) chatTimer = setTimeout(loadChat, 2500);
   }
   const chatChanged = () => {
     $('chat-send').disabled = !$('chat-text').value.trim();
@@ -418,22 +634,35 @@
     t.style.height = `${Math.min(140, Math.max(46, t.scrollHeight + 2))}px`;
   };
   $('chat-text').addEventListener('input', chatChanged);
-  $('chat-mic').onclick = () => dictate($('chat-mic'), $('chat-text'), chatChanged);
+  $('chat-mic').onclick = () => {
+    const t = $('chat-text');
+    const base = t.value ? `${t.value.replace(/\s+$/, '')} ` : '';
+    let final = '';
+    dictate($('chat-mic'), {
+      say: (m) => (t.placeholder = m && !/^Listening/.test(m) && !final && !t.value ? m : 'Message this session…'),
+      onFinal: (x) => ((final += x), (t.value = base + final), chatChanged()),
+      onInterim: (x) => ((t.value = base + final + x), chatChanged()),
+    });
+  };
   $('chat-send').onclick = async () => {
     rec?.stop();
     const text = $('chat-text').value.trim();
     if (!text || !open) return;
     $('chat-send').disabled = true;
-    const { error } = await db.from('requests').insert({ target_device: open.device, from_device: 'phone', from_name: 'Phone', item: open.key, kind: 'message', result: { text } });
+    const { data, error } = await db.from('requests').insert({ target_device: open.device, from_device: 'phone', from_name: 'Phone', item: open.key, kind: 'message', result: { text } }).select('id,status,result,created_at').single();
     if (error) {
       $('chat-log').insertAdjacentHTML('beforeend', `<div class="msg st bad">${esc(error.message)}</div>`);
       return chatChanged();
     }
     $('chat-text').value = '';
     chatChanged();
-    loadChat(true);
+    chat.dismissed = Math.max(chat.dismissed || 0, ...chat.failed.map((r) => r.id)); // (earlier failures leave the screen)
+    chat.failed = [];
+    chat.busy = [...chat.busy, data];
+    drawChat({ scroll: true });
+    chatTimer = setTimeout(loadChat, 2000);
   };
-  document.addEventListener('visibilitychange', () => !document.hidden && open && loadChat());
+  document.addEventListener('visibilitychange', () => !document.hidden && open && (fetchHistory(), loadChat()));
 })();
 </script>
 </body>
