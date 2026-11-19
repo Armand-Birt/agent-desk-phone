@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Desk">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#191919" media="(prefers-color-scheme: dark)">
+<meta name="robots" content="noindex">
+<title>Agent Desk</title>
+<style>
+  :root { --bg: #fff; --text: #37352f; --muted: #787774; --faint: #a5a29a; --border: #e9e9e7; --soft: #f7f6f3; --accent: #2383e2; --ok: #448361; --bad: #d44c47; --note: #fbf3db; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #191919; --text: #e6e6e4; --muted: #9b9b9b; --faint: #6f6f6f; --border: #2f2f2f; --soft: #232323; --accent: #529cca; --ok: #6fb38d; --bad: #e8736e; --note: #3a3320; } }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
+  body { display: flex; flex-direction: column; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+  [hidden] { display: none !important; }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .screen { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .pad { padding: 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .muted { color: var(--muted); } .faint { color: var(--faint); } .small { font-size: 13px; }
+  .btn { border: 1px solid var(--border); background: var(--bg); border-radius: 10px; padding: 10px 16px; font-weight: 500; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn:disabled { opacity: .45; }
+  .btn.ghost { border-color: transparent; color: var(--muted); padding: 8px 10px; }
+  input[type=email], input[type=password], input[type=text] { width: 100%; border: 1px solid var(--border); background: var(--bg); border-radius: 10px; padding: 12px; margin-top: 4px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-top: 12px; }
+  .err { color: var(--bad); font-size: 14px; margin-top: 10px; }
+
+  /* tabs */
+  .tabs { display: flex; border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); background: var(--bg); }
+  .tabs button { flex: 1; border: 0; background: none; padding: 9px 0 8px; font-size: 11px; color: var(--faint); display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .tabs button span { font-size: 21px; line-height: 1.1; }
+  .tabs button.on { color: var(--accent); }
+  .view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+  /* note */
+  .composer { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 10px; }
+  textarea { width: 100%; border: 1px solid var(--border); border-radius: 14px; padding: 14px; background: var(--note); resize: none; min-height: 150px; outline: 0; }
+  textarea.plain { background: var(--bg); min-height: 0; height: 46px; max-height: 140px; border-radius: 22px; padding: 10px 14px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .spacer { flex: 1; }
+  .mic { width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg); font-size: 24px; display: grid; place-items: center; flex: none; }
+  .mic.small { width: 46px; height: 46px; font-size: 20px; }
+  .mic.on { background: var(--bad); border-color: var(--bad); color: #fff; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--bad) 22%, transparent); } }
+  .lang { border: 1px solid var(--border); background: var(--bg); border-radius: 10px; padding: 9px 8px; font-size: 14px; }
+  .list-h { font-size: 12px; font-weight: 600; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; padding: 14px 16px 6px; }
+  .item { padding: 11px 16px; border-top: 1px solid var(--border); }
+  .item .t { white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .item .s { font-size: 12px; color: var(--faint); margin-top: 3px; }
+  .item .s.ok { color: var(--ok); } .item .s.bad { color: var(--bad); }
+  .empty { padding: 26px 20px; color: var(--faint); text-align: center; font-size: 14px; }
+
+  /* sessions */
+  .sess { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-top: 1px solid var(--border); width: 100%; background: none; border-left: 0; border-right: 0; border-bottom: 0; text-align: left; }
+  .sess .n { flex: 1; min-width: 0; }
+  .sess .n b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sess .n small { color: var(--faint); font-size: 12px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.running { background: var(--accent); animation: blink 1s ease-in-out infinite; } .dot.waiting { background: #d9730d; } .dot.finished { background: var(--ok); }
+  @keyframes blink { 50% { opacity: .35; } }
+  .chev { color: var(--faint); }
+  .chat-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 4px; border-bottom: 1px solid var(--border); }
+  .chat-head b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat { padding: 12px 14px 4px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 92%; border-radius: 16px; padding: 9px 13px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; }
+  .msg.me { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 5px; }
+  .msg.cl { align-self: flex-start; background: var(--soft); border-bottom-left-radius: 5px; }
+  .msg.st { align-self: flex-start; color: var(--faint); font-size: 13px; padding: 0 4px; }
+  .msg.st.bad { color: var(--bad); }
+  .send-bar { display: flex; align-items: flex-end; gap: 8px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }
+  .send { width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; font-size: 20px; flex: none; }
+  .send:disabled { opacity: .4; }
+
+  /* settings */
+  .card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin: 0 16px 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 6px; }
+  .card ol { margin: 8px 0 0; padding-left: 20px; font-size: 14px; }
+  .card li { margin: 7px 0; }
+  code { font: 12.5px ui-monospace, Menlo, monospace; background: var(--soft); border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
+  .copy { font-size: 12px; border: 1px solid var(--border); background: var(--bg); border-radius: 6px; padding: 1px 7px; margin-left: 4px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- 1. Not set up: the link from Agent Desk on your computer carries the project address -->
+<div id="s-setup" class="screen pad" hidden>
+  <h1>Agent Desk</h1>
+  <p class="muted">This page isn't set up on this phone yet.</p>
+  <p>On your computer, open Agent Desk → your account (bottom left) → <b>Copy setup link</b>, and open that link on this phone.</p>
+</div>
+
+<!-- 2. Sign in -->
+<form id="s-login" class="screen pad" hidden>
+  <h1>Agent Desk</h1>
+  <p class="muted small">Sign in with the same account as on your computer.</p>
+  <label>Email <input id="email" type="email" autocomplete="username" autocapitalize="off" required></label>
+  <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
+  <p id="login-err" class="err" hidden></p>
+  <p style="margin-top:18px"><button class="btn primary" style="width:100%">Sign in</button></p>
+</form>
+
+<!-- 3. The app -->
+<div id="s-app" class="screen" hidden>
+  <!-- Note -->
+  <div id="v-note" class="view">
+    <div class="composer">
+      <textarea id="note" placeholder="Jot an idea… it lands on your Notepad"></textarea>
+      <div class="row">
+        <button id="note-mic" class="mic" type="button" aria-label="Dictate">🎙</button>
+        <select id="lang" class="lang" aria-label="Dictation language"><option value="zh-CN">中文</option><option value="en-US">English</option></select>
+        <span id="note-hint" class="faint small"></span>
+        <span class="spacer"></span>
+        <button id="note-save" class="btn primary" type="button" disabled>Save</button>
+      </div>
+    </div>
+    <div class="scroll">
+      <div class="list-h">Recent</div>
+      <div id="notes"></div>
+    </div>
+  </div>
+
+  <!-- Sessions -->
+  <div id="v-sessions" class="view" hidden>
+    <div id="sess-list" class="scroll"></div>
+    <div id="chat" class="view" hidden>
+      <div class="chat-head"><button id="chat-back" class="btn ghost" type="button">‹ Back</button><b id="chat-title"></b><span id="chat-dot" class="dot"></span></div>
+      <div id="chat-scroll" class="scroll"><div id="chat-log" class="chat"></div></div>
+      <div class="send-bar">
+        <button id="chat-mic" class="mic small" type="button" aria-label="Dictate">🎙</button>
+        <textarea id="chat-text" class="plain" rows="1" placeholder="Message this session…"></textarea>
+        <button id="chat-send" class="send" type="button" disabled aria-label="Send">↑</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="v-more" class="view" hidden>
+    <div class="scroll" style="padding-top:16px">
+      <div class="card">
+        <h2>Account</h2>
+        <div id="who" class="muted small"></div>
+        <p style="margin:12px 0 0"><button id="signout" class="btn" type="button">Sign out</button></p>
+      </div>
+      <div class="card">
+        <h2>Add to Home Screen</h2>
+        <div class="muted small">In Safari: Share → Add to Home Screen. It then opens like an app. (Dictation with the 🎙 button works in Safari; from the Home Screen icon iOS may only offer the keyboard's own dictation key.)</div>
+      </div>
+      <div class="card">
+        <h2>“Hey Siri, jot it down”</h2>
+        <div class="muted small">A Siri shortcut that saves what you say straight to the Notepad, without opening this page. In the Shortcuts app, make a new shortcut with these actions:</div>
+        <ol>
+          <li><b>Dictate Text</b> (set its language; “Stop Listening: After Pause”).</li>
+          <li><b>Get Contents of URL</b> · Method <code>POST</code> · URL <code id="sc-auth"></code><button class="copy" data-copy="sc-auth">copy</button><br>Headers: <code>apikey</code> = <code id="sc-key"></code><button class="copy" data-copy="sc-key">copy</button><br>Request Body JSON: <code>email</code> = your email, <code>password</code> = your password.</li>
+          <li><b>Get Dictionary Value</b> · Get <code>Value</code> for <code>access_token</code> in <i>Contents of URL</i>.</li>
+          <li><b>Get Contents of URL</b> · Method <code>POST</code> · URL <code id="sc-rest"></code><button class="copy" data-copy="sc-rest">copy</button><br>Headers: <code>apikey</code> = the same key; <code>Authorization</code> = <code>Bearer </code> followed by <i>Dictionary Value</i>.<br>Request Body JSON: <code>target_device</code> = <code>*</code>, <code>from_device</code> = <code>phone</code>, <code>from_name</code> = <code>Siri</code>, <code>item</code> = <code>notepad</code>, <code>kind</code> = <code>note</code>, and <code>result</code> = a <b>Dictionary</b> with <code>text</code> = <i>Dictated Text</i>.</li>
+          <li>Name the shortcut (e.g. “Jot it down”): that name is what you say to Siri.</li>
+        </ol>
+        <div class="faint small" style="margin-top:8px">Your password is stored in the shortcut on this phone.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button data-tab="note" class="on"><span>🗒</span>Note</button>
+    <button data-tab="sessions"><span>✳︎</span>Sessions</button>
+    <button data-tab="more"><span>⚙︎</span>More</button>
+  </div>
+</div>
+
+<script src="supabase.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const store = {
+    get: (k) => { try { return localStorage.getItem(`desk:${k}`); } catch { return null; } },
+    set: (k, v) => { try { localStorage.setItem(`desk:${k}`, v); } catch {} },
+  };
+  const show = (id) => ['s-setup', 's-login', 's-app'].forEach((s) => ($(s).hidden = s !== id));
+  const ago = (iso) => {
+    const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+    return s < 60 ? 'just now' : s < 3600 ? `${Math.floor(s / 60)} min ago` : s < 86400 ? `${Math.floor(s / 3600)} h ago` : new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
+  // ---- Set up: the link from Agent Desk carries the project's address and publishable key in its "#…" ----
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('u') && h.get('k')) {
+    store.set('url', h.get('u'));
+    store.set('key', h.get('k'));
+    history.replaceState(null, '', location.pathname);
+  }
+  const URL_ = store.get('url');
+  const KEY = store.get('key');
+  if (!URL_ || !KEY) return show('s-setup');
+  const db = supabase.createClient(URL_, KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
+  let user = null;
+
+  $('s-login').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('login-err').hidden = true;
+    const { data, error } = await db.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value });
+    if (error) return (($('login-err').textContent = error.message), ($('login-err').hidden = false));
+    start(data.user);
+  });
+  $('signout').onclick = async () => {
+    await db.auth.signOut();
+    location.reload();
+  };
+  db.auth.getSession().then(({ data }) => (data.session ? start(data.session.user) : show('s-login')));
+
+  function start(u) {
+    user = u;
+    show('s-app');
+    $('who').textContent = u.email;
+    $('sc-auth').textContent = `${URL_}/auth/v1/token?grant_type=password`;
+    $('sc-rest').textContent = `${URL_}/rest/v1/requests`;
+    $('sc-key').textContent = KEY;
+    loadNotes();
+    setTab(store.get('tab') || 'note');
+  }
+  document.addEventListener('click', (e) => {
+    const c = e.target.closest('[data-copy]');
+    if (!c) return;
+    navigator.clipboard?.writeText($(c.dataset.copy).textContent);
+    c.textContent = 'copied';
+    setTimeout(() => (c.textContent = 'copy'), 1200);
+  });
+
+  // ---- Tabs ----
+  let tab = 'note';
+  function setTab(t) {
+    tab = t;
+    store.set('tab', t);
+    for (const v of ['note', 'sessions', 'more']) $(`v-${v}`).hidden = v !== t;
+    for (const b of document.querySelectorAll('.tabs button')) b.classList.toggle('on', b.dataset.tab === t);
+    if (t === 'sessions') loadSessions();
+    if (t === 'note') loadNotes();
+  }
+  document.querySelector('.tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tab]');
+    if (b) setTab(b.dataset.tab);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !user) return;
+    if (tab === 'sessions') loadSessions();
+    if (tab === 'note') loadNotes();
+  });
+
+  // ---- Dictation: the browser's speech recognition where it has one (else use the keyboard's 🎙 key) ----
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  $('lang').value = store.get('lang') || (navigator.language.startsWith('zh') ? 'zh-CN' : 'en-US');
+  $('lang').onchange = () => store.set('lang', $('lang').value);
+  let rec = null;
+  function dictate(btn, field, onText) {
+    if (rec) return rec.stop();
+    if (!SR) {
+      field.focus();
+      $('note-hint').textContent = 'Use the 🎙 key on the keyboard';
+      return;
+    }
+    const base = field.value ? `${field.value.replace(/\s+$/, '')} ` : '';
+    let final = '';
+    rec = new SR();
+    rec.lang = $('lang').value;
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      field.value = base + final + interim;
+      onText();
+    };
+    rec.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') $('note-hint').textContent = 'Microphone not allowed: use the keyboard’s 🎙 key';
+    };
+    rec.onend = () => {
+      rec = null;
+      btn.classList.remove('on');
+      onText();
+    };
+    try {
+      rec.start();
+      btn.classList.add('on');
+      $('note-hint').textContent = '';
+    } catch {
+      rec = null;
+    }
+  }
+  if (!SR) $('lang').hidden = true;
+
+  // ---- Notes: each one waits in the cloud until one of your computers puts it on the Notepad ----
+  const noteChanged = () => ($('note-save').disabled = !$('note').value.trim());
+  $('note').addEventListener('input', noteChanged);
+  $('note-mic').onclick = () => dictate($('note-mic'), $('note'), noteChanged);
+  $('note').value = store.get('draft') || '';
+  noteChanged();
+  $('note').addEventListener('input', () => store.set('draft', $('note').value));
+  $('note-save').onclick = async () => {
+    rec?.stop();
+    const text = $('note').value.trim();
+    if (!text) return;
+    $('note-save').disabled = true;
+    const { error } = await db.from('requests').insert({ target_device: '*', from_device: 'phone', from_name: 'Phone', item: 'notepad', kind: 'note', result: { text } });
+    if (error) {
+      $('note-hint').textContent = `Not saved: ${error.message}`;
+      return noteChanged();
+    }
+    $('note').value = '';
+    store.set('draft', '');
+    $('note-hint').textContent = 'Saved ✓';
+    setTimeout(() => ($('note-hint').textContent = ''), 2500);
+    noteChanged();
+    loadNotes();
+  };
+  let notesTimer = null;
+  async function loadNotes() {
+    clearTimeout(notesTimer);
+    const { data, error } = await db.from('requests').select('id,status,result,created_at').eq('kind', 'note').order('id', { ascending: false }).limit(15);
+    if (error) return;
+    $('notes').innerHTML = data.length
+      ? data
+          .map((r) => {
+            const st = r.status === 'done' ? ['ok', `On your Notepad${r.result?.device ? ` · ${esc(r.result.device)}` : ''}`] : r.status === 'failed' ? ['bad', esc(r.result?.reason || 'Not saved')] : ['', 'Waiting for one of your computers'];
+            return `<div class="item"><div class="t">${esc(r.result?.text || '')}</div><div class="s ${st[0]}">${st[1]} · ${ago(r.created_at)}</div></div>`;
+          })
+          .join('')
+      : '<div class="empty">Nothing yet. What you save here appears as a new note on the Notepad in Agent Desk.</div>';
+    // (keep looking while one is still on its way)
+    if (tab === 'note' && !document.hidden && data.some((r) => r.status === 'pending' || r.status === 'working')) notesTimer = setTimeout(loadNotes, 5000);
+  }
+
+  // ---- Sessions: the ones you made reachable from your phone, on the computers that have them open ----
+  const AWAY_MS = 11 * 60_000;
+  let sessions = []; // [{ key, title, state, device, deviceName }]
+  let open = null;
+  const LABEL = { running: 'Claude is working', waiting: 'Needs your input', finished: 'Finished its turn', open: 'Open' };
+  async function loadSessions() {
+    const { data, error } = await db.from('presence').select('device_id,device_name,items,updated_at');
+    if (error) return ($('sess-list').innerHTML = `<div class="empty">${esc(error.message)}</div>`);
+    sessions = [];
+    for (const r of data) {
+      if (Date.now() - Date.parse(r.updated_at) > AWAY_MS) continue; // asleep or offline
+      for (const [key, it] of Object.entries(r.items || {})) if (it.phone) sessions.push({ key, title: it.title || 'Session', state: it.state, device: r.device_id, deviceName: r.device_name });
+    }
+    $('sess-list').innerHTML = sessions.length
+      ? `<div class="list-h">Open on your computers</div>${sessions.map((s, i) => `<button class="sess" data-i="${i}"><span class="dot ${esc(s.state)}"></span><span class="n"><b>${esc(s.title)}</b><small>${esc(LABEL[s.state] || s.state)} · ${esc(s.deviceName)}</small></span><span class="chev">›</span></button>`).join('')}`
+      : '<div class="empty">No session is reachable right now.<br><br>On your computer, open a session in Agent Desk and switch on <b>📱 Reachable from your phone</b> (under Computers). It shows here while it is open and the computer is awake.</div>';
+    if (open) {
+      const s = sessions.find((x) => x.key === open.key && x.device === open.device);
+      $('chat-dot').className = `dot ${s ? s.state : ''}`;
+    }
+  }
+  $('sess-list').addEventListener('click', (e) => {
+    const b = e.target.closest('.sess');
+    if (b) openChat(sessions[Number(b.dataset.i)]);
+  });
+  let chatTimer = null;
+  function openChat(s) {
+    open = s;
+    $('sess-list').hidden = true;
+    $('chat').hidden = false;
+    $('chat-title').textContent = s.title;
+    $('chat-dot').className = `dot ${s.state}`;
+    $('chat-log').innerHTML = '';
+    loadChat(true);
+  }
+  $('chat-back').onclick = () => {
+    open = null;
+    clearTimeout(chatTimer);
+    $('chat').hidden = true;
+    $('sess-list').hidden = false;
+    loadSessions();
+  };
+  let lastChat = '';
+  async function loadChat(scroll) {
+    clearTimeout(chatTimer);
+    if (!open) return;
+    const { data, error } = await db.from('requests').select('id,status,result,created_at').eq('kind', 'message').eq('item', open.key).order('id', { ascending: false }).limit(20);
+    if (error || !open) return;
+    const rows = data.reverse();
+    const html = rows.length
+      ? rows
+          .map((r) => {
+            const me = `<div class="msg me">${esc(r.result?.text || '')}</div>`;
+            if (r.status === 'done') return `${me}<div class="msg cl">${esc(r.result?.reply || '(no text in the reply)')}</div>${r.result?.state === 'waiting' ? '<div class="msg st">Claude is waiting for your input on the computer</div>' : ''}`;
+            if (r.status === 'failed') return `${me}<div class="msg st bad">${esc(r.result?.reason || 'Not delivered')}</div>`;
+            return `${me}<div class="msg st">${r.status === 'working' ? 'Claude is working…' : `Sending to ${esc(open.deviceName)}…`}</div>`;
+          })
+          .join('')
+      : '<div class="empty">Send a message to this session. Claude’s reply comes back here.</div>';
+    if (html !== lastChat) {
+      lastChat = html;
+      $('chat-log').innerHTML = html;
+      $('chat-scroll').scrollTop = $('chat-scroll').scrollHeight;
+    } else if (scroll) $('chat-scroll').scrollTop = $('chat-scroll').scrollHeight;
+    const busy = rows.some((r) => r.status === 'pending' || r.status === 'working');
+    if (busy && !document.hidden) chatTimer = setTimeout(() => loadChat(), 3000);
+    if (busy !== loadChat.busy) ((loadChat.busy = busy), loadSessions());
+  }
+  const chatChanged = () => {
+    $('chat-send').disabled = !$('chat-text').value.trim();
+    const t = $('chat-text');
+    t.style.height = 'auto';
+    t.style.height = `${Math.min(140, Math.max(46, t.scrollHeight + 2))}px`;
+  };
+  $('chat-text').addEventListener('input', chatChanged);
+  $('chat-mic').onclick = () => dictate($('chat-mic'), $('chat-text'), chatChanged);
+  $('chat-send').onclick = async () => {
+    rec?.stop();
+    const text = $('chat-text').value.trim();
+    if (!text || !open) return;
+    $('chat-send').disabled = true;
+    const { error } = await db.from('requests').insert({ target_device: open.device, from_device: 'phone', from_name: 'Phone', item: open.key, kind: 'message', result: { text } });
+    if (error) {
+      $('chat-log').insertAdjacentHTML('beforeend', `<div class="msg st bad">${esc(error.message)}</div>`);
+      return chatChanged();
+    }
+    $('chat-text').value = '';
+    chatChanged();
+    loadChat(true);
+  };
+  document.addEventListener('visibilitychange', () => !document.hidden && open && loadChat());
+})();
+</script>
+</body>
+</html>
