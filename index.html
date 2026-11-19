@@ -302,7 +302,6 @@
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   $('lang').value = store.get('lang') || (navigator.language.startsWith('zh') ? 'zh-CN' : 'en-US');
   $('lang').onchange = () => store.set('lang', $('lang').value);
-  if (!SR || (stt === 'cloud' && window.MediaRecorder)) $('lang').hidden = true; // (the cloud transcription needs no language)
   const WHY = {
     'not-allowed': 'Microphone not allowed. Allow it for this page in Settings → Safari → Microphone, or use the keyboard’s 🎙 key.',
     'service-not-allowed': 'Dictation is off on this phone (Settings → General → Keyboard → Enable Dictation). Or use the keyboard’s 🎙 key.',
@@ -328,7 +327,9 @@
   // understands Chinese and English mixed together). Tap to start, tap again to stop; the text arrives a few seconds
   // later. If that function isn't there, the browser's own dictation is used instead.
   let tape = null; // { rec, btn } while recording
-  let stt = store.get('stt') || 'cloud';
+  let stt = 'cloud'; // ('browser' once the function turns out not to be there; a reload tries the cloud again)
+  const langShown = () => ($('lang').hidden = !SR || (stt === 'cloud' && Boolean(window.MediaRecorder))); // (the cloud transcription needs no language)
+  langShown();
   async function record(btn, { onFinal, say }) {
     if (tape) return tape.rec.stop();
     let stream;
@@ -361,6 +362,7 @@
         const res = await fetch(`${URL_}/functions/v1/transcribe`, { method: 'POST', headers: { Authorization: `Bearer ${data.session?.access_token || ''}`, apikey: KEY, 'Content-Type': blob.type }, body: blob });
         if (res.status === 404) {
           stt = 'browser';
+          langShown();
           return say('Transcription isn’t set up on your cloud project yet, so this used nothing. Tap 🎙 again to use the phone’s own dictation.');
         }
         const out = await res.json().catch(() => ({}));
