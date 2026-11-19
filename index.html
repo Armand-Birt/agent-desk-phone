@@ -11,7 +11,7 @@
 <meta name="robots" content="noindex">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-180.png">
-<link rel="stylesheet" href="blocks.css?v6">
+<link rel="stylesheet" href="blocks.css?v7">
 <title>Agent Desk</title>
 <style>
   :root { --bg: #fff; --text: #37352f; --muted: #787774; --faint: #a5a29a; --border: #e9e9e7; --soft: #f7f6f3; --accent: #2383e2; --ok: #448361; --bad: #d44c47; --note: #fbf3db;
@@ -97,6 +97,9 @@
   .chev { color: var(--faint); }
   .chat-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 4px; border-bottom: 1px solid var(--border); }
   .chat-head b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .voice { font-size: 18px; padding: 6px 9px; border-radius: 10px; opacity: .55; }
+  .voice.on { opacity: 1; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .voice.speaking { animation: blink 1s ease-in-out infinite; }
   .chat { padding: 12px 14px 4px; display: flex; flex-direction: column; gap: 10px; }
   .msg { max-width: 92%; border-radius: 16px; padding: 9px 13px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; }
   .msg.me { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 5px; }
@@ -142,7 +145,7 @@
   <div id="v-note" class="view">
     <div class="pad-head">
       <h1>Notepad</h1>
-      <span id="pad-state" class="faint small">v6</span>
+      <span id="pad-state" class="faint small">v7</span>
       <span class="spacer"></span>
       <select id="lang" class="lang" aria-label="Dictation language"><option value="zh-CN">中文</option><option value="en-US">English</option></select>
       <button id="pad-new" class="btn primary" type="button">＋ Note</button>
@@ -160,7 +163,7 @@
   <div id="v-sessions" class="view" hidden>
     <div id="sess-list" class="scroll"></div>
     <div id="chat" class="view" hidden>
-      <div class="chat-head"><button id="chat-back" class="btn ghost" type="button">‹ Back</button><b id="chat-title"></b><span id="chat-dot" class="dot"></span></div>
+      <div class="chat-head"><button id="chat-back" class="btn ghost" type="button">‹ Back</button><b id="chat-title"></b><span id="chat-dot" class="dot"></span><button id="chat-voice" class="btn ghost voice" type="button" title="Voice mode: what you say is sent as soon as you stop, and Claude’s reply is read aloud">🎧</button></div>
       <div id="chat-scroll" class="scroll"><div id="chat-log" class="chat"></div></div>
       <div class="send-bar">
         <button id="chat-mic" class="mic small" type="button" aria-label="Dictate">🎙</button>
@@ -176,7 +179,7 @@
       <div class="card">
         <h2>Account</h2>
         <div id="who" class="muted small"></div>
-        <div class="faint small" style="margin-top:4px">Page version v6</div>
+        <div class="faint small" style="margin-top:4px">Page version v7</div>
         <p style="margin:12px 0 0"><button id="signout" class="btn" type="button">Sign out</button></p>
       </div>
       <div class="card">
@@ -232,11 +235,11 @@
       el.onclick = () => el.remove();
       document.body.appendChild(el);
     }
-    el.textContent = `Something went wrong (v6). Tell Claude this line:\n${text}`;
+    el.textContent = `Something went wrong (v7). Tell Claude this line:\n${text}`;
   }
 </script>
-<script src="supabase.js?v6"></script>
-<script src="blocks.js?v6"></script>
+<script src="supabase.js?v7"></script>
+<script src="blocks.js?v7"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -315,6 +318,48 @@
     if (tab === 'note') (loadPad({ quiet: true }), loadNotes());
   });
 
+  // ---- Reading aloud (voice mode): the phone's own voices; a reply is read in pieces, code left out ----
+  const synth = window.speechSynthesis;
+  let speakingBtn = null;
+  const stopSpeaking = () => {
+    synth?.cancel();
+    speakingBtn?.classList.remove('speaking');
+  };
+  // (a phone only lets a page speak after you've touched it: say nothing once, on a tap)
+  const unlockSpeech = () => {
+    if (!synth) return;
+    const u = new SpeechSynthesisUtterance(' ');
+    u.volume = 0;
+    synth.speak(u);
+  };
+  function speak(text, btn) {
+    if (!synth) return banner('This browser can’t read aloud.');
+    stopSpeaking();
+    const plain = String(text || '')
+      .replace(/```[\s\S]*?```/g, ' (code) ')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/^\s*([#>*+-]|\d+[.)])\s+/gm, '')
+      .replace(/[*_~|]/g, '')
+      .trim();
+    if (!plain) return;
+    // Sentence by sentence (long passages get cut off otherwise), each in a voice for its language.
+    const parts = plain.match(/[^。！？.!?\n]+[。！？.!?]*\n*/g) || [plain];
+    const voices = synth.getVoices();
+    speakingBtn = btn || null;
+    speakingBtn?.classList.add('speaking');
+    parts.forEach((p, i) => {
+      if (!p.trim()) return;
+      const u = new SpeechSynthesisUtterance(p.trim());
+      u.lang = /[\u4e00-\u9fff]/.test(p) ? 'zh-CN' : 'en-US';
+      const v = voices.find((x) => x.lang === u.lang && x.localService) || voices.find((x) => x.lang?.startsWith(u.lang.slice(0, 2)));
+      if (v) u.voice = v;
+      u.rate = 1.05;
+      if (i === parts.length - 1) u.onend = () => speakingBtn?.classList.remove('speaking');
+      synth.speak(u);
+    });
+  }
+
   // ---- Dictation: the browser's speech recognition where it has one (else use the keyboard's 🎙 key) ----
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   $('lang').value = store.get('lang') || (navigator.language.startsWith('zh') ? 'zh-CN' : 'en-US');
@@ -347,7 +392,8 @@
   let stt = 'cloud'; // ('browser' once the function turns out not to be there; a reload tries the cloud again)
   const langShown = () => ($('lang').hidden = !SR || (stt === 'cloud' && Boolean(window.MediaRecorder))); // (the cloud transcription needs no language)
   langShown();
-  async function record(btn, { onFinal, say }) {
+  async function record(btn, { onFinal, say, onDone }) {
+    stopSpeaking();
     if (tape) return tape.rec.stop();
     let stream;
     try {
@@ -385,7 +431,7 @@
         const out = await res.json().catch(() => ({}));
         if (!res.ok) return say(`Couldn’t transcribe: ${out.error || res.status}`);
         say('');
-        if (out.text) onFinal(out.text);
+        if (out.text) (onFinal(out.text), onDone?.(out.text));
         else say('Didn’t catch any words in that.');
       } catch (err) {
         say(`Couldn’t transcribe (${err.message}). Is the phone online?`);
@@ -671,7 +717,8 @@
 
   // A session, as a chat: its conversation so far (asked from the computer that has it open), then what you send.
   let chatTimer = null;
-  const chat = { turns: null, more: false, note: '', busy: [], failed: [], seq: 0 };
+  // done: your messages Claude has answered since the conversation was last fetched (shown until the next fetch has them)
+  const chat = { turns: null, more: false, note: '', busy: [], failed: [], done: [], cut: 0, seq: 0 };
   const bubble = (t) => `<div class="msg ${t.kind === 'user' ? 'me' : 'cl'}">${esc(t.text)}</div>`;
   function drawChat({ scroll = false } = {}) {
     const el = $('chat-scroll');
@@ -682,9 +729,10 @@
       chat.turns === null ? `<div class="msg st">${esc(chat.note || `Getting the conversation from ${open.deviceName}…`)}</div>` : '',
       chat.more ? '<div class="msg st">Earlier messages are on the computer</div>' : '',
       turns.map(bubble).join(''),
-      chat.turns && !turns.length && !chat.busy.length ? '<div class="empty">Nothing in this session yet. Send a message; Claude’s reply comes back here.</div>' : '',
+      chat.turns && !turns.length && !chat.busy.length && !chat.done.length ? '<div class="empty">Nothing in this session yet. Send a message; Claude’s reply comes back here.</div>' : '',
+      chat.done.map((r) => `${bubble({ kind: 'user', text: r.result?.text || '' })}${bubble({ kind: 'assistant', text: r.result?.reply || '(no text in the reply)' })}`).join(''),
       // (a message on its way: its bubble, unless the conversation already shows it, and what's happening with it)
-      chat.busy.map((r) => `${r.result?.text && r.result.text !== lastUser ? bubble({ kind: 'user', text: r.result.text }) : ''}<div class="msg st">${r.status === 'working' ? 'Claude is working…' : `Sending to ${esc(open.deviceName)}…`}</div>`).join(''),
+      chat.busy.map((r) => `${r.result?.text && (r.result.text !== lastUser || chat.done.length) ? bubble({ kind: 'user', text: r.result.text }) : ''}<div class="msg st">${r.status === 'working' ? 'Claude is working…' : `Sending to ${esc(open.deviceName)}…`}</div>`).join(''),
       chat.failed.map((r) => `${bubble({ kind: 'user', text: r.result?.text || '' })}<div class="msg st bad">${esc(r.result?.reason || 'Not delivered')}</div>`).join(''),
     ].join('');
     if (html === drawChat.last && !scroll) return;
@@ -696,6 +744,7 @@
   async function fetchHistory() {
     const mine = ++chat.seq;
     const s = open;
+    const covers = chat.top || 0; // (messages answered up to here are in what the computer sends back)
     const { data: req, error } = await db.from('requests').insert({ target_device: s.device, from_device: 'phone', from_name: 'Phone', item: s.key, kind: 'history' }).select('id').single();
     if (error) return ((chat.note = error.message), drawChat());
     for (let i = 0; i < 20; i++) {
@@ -704,7 +753,7 @@
       const { data } = await db.from('requests').select('status,result').eq('id', req.id).maybeSingle();
       if (!data || data.status === 'pending' || data.status === 'working') continue;
       db.from('requests').delete().eq('id', req.id).then(() => {});
-      if (data.status === 'done') Object.assign(chat, { turns: data.result?.turns || [], more: Boolean(data.result?.more), note: '' });
+      if (data.status === 'done') Object.assign(chat, { turns: data.result?.turns || [], more: Boolean(data.result?.more), note: '', cut: Math.max(chat.cut, covers), done: chat.done.filter((r) => r.id > covers) });
       else if (chat.turns === null) Object.assign(chat, { turns: [], note: data.result?.reason || '' });
       return drawChat({ scroll: true });
     }
@@ -717,13 +766,14 @@
     $('chat').hidden = false;
     $('chat-title').textContent = s.title;
     $('chat-dot').className = `dot ${s.state}`;
-    Object.assign(chat, { turns: null, more: false, note: '', busy: [], failed: [] });
+    Object.assign(chat, { turns: null, more: false, note: '', busy: [], failed: [], done: [], cut: Infinity, top: 0 });
     drawChat.last = null;
     drawChat({ scroll: true });
     fetchHistory();
     loadChat();
   }
   $('chat-back').onclick = () => {
+    stopSpeaking();
     open = null;
     clearTimeout(chatTimer);
     $('chat').hidden = true;
@@ -739,8 +789,14 @@
     if (error || open !== s) return;
     const rows = data.reverse();
     const busy = rows.filter((r) => r.status === 'pending' || r.status === 'working');
-    const answered = chat.busy.some((b) => !busy.find((r) => r.id === b.id)); // one of them just finished
+    const finished = rows.filter((r) => r.status === 'done');
+    if (chat.cut === Infinity) chat.cut = Math.max(0, ...finished.map((r) => r.id)); // (answered before you opened this: the conversation has them)
+    const just = finished.filter((r) => chat.busy.some((b) => b.id === r.id)); // answered just now
+    const answered = just.length > 0 || chat.busy.some((b) => !rows.find((r) => r.id === b.id && (r.status === 'pending' || r.status === 'working')));
     chat.busy = busy;
+    chat.done = finished.filter((r) => r.id > chat.cut);
+    chat.top = Math.max(0, ...finished.map((r) => r.id));
+    if (just.length && voiceOn()) speak(just[just.length - 1].result?.reply, $('chat-voice'));
     chat.failed = rows.filter((r) => r.status === 'failed' && Date.now() - Date.parse(r.created_at) < 10 * 60_000 && r.id > (chat.dismissed || 0));
     drawChat();
     if (answered) (fetchHistory(), loadSessions());
@@ -753,17 +809,31 @@
     t.style.height = `${Math.min(140, Math.max(46, t.scrollHeight + 2))}px`;
   };
   $('chat-text').addEventListener('input', chatChanged);
+  // Voice mode (🎧): what you say is sent as soon as its text is in, and Claude's reply is read aloud.
+  const voiceOn = () => store.get('voice') === '1';
+  const paintVoice = () => $('chat-voice').classList.toggle('on', voiceOn());
+  paintVoice();
+  $('chat-voice').onclick = () => {
+    if ($('chat-voice').classList.contains('speaking')) return stopSpeaking(); // (a tap while it reads: stop reading)
+    store.set('voice', voiceOn() ? '0' : '1');
+    paintVoice();
+    if (voiceOn()) unlockSpeech();
+    else stopSpeaking();
+    banner(voiceOn() ? 'Voice mode on: tap 🎙, speak, tap again. It’s sent right away and the reply is read aloud.' : 'Voice mode off');
+  };
   $('chat-mic').onclick = () => {
     const t = $('chat-text');
     const base = t.value ? `${t.value.replace(/\s+$/, '')} ` : '';
     let final = '';
+    if (voiceOn()) unlockSpeech();
     dictate($('chat-mic'), {
       say: sayIn((m) => (t.placeholder = /^Listening/.test(m) ? 'Listening…' : 'Message this session…')),
       onFinal: (x) => ((final += x), (t.value = base + final), chatChanged()),
       onInterim: (x) => ((t.value = base + final + x), chatChanged()),
+      onDone: () => voiceOn() && sendChat(),
     });
   };
-  $('chat-send').onclick = async () => {
+  async function sendChat() {
     rec?.stop();
     if (tape) return tape.rec.stop(); // (finish the recording first; send once its text is in)
     const text = $('chat-text').value.trim();
@@ -780,7 +850,11 @@
     chat.failed = [];
     chat.busy = [...chat.busy, data];
     drawChat({ scroll: true });
-    chatTimer = setTimeout(loadChat, 2000);
+    chatTimer = setTimeout(loadChat, 1500);
+  }
+  $('chat-send').onclick = () => {
+    if (voiceOn()) unlockSpeech();
+    sendChat();
   };
   document.addEventListener('visibilitychange', () => !document.hidden && open && (fetchHistory(), loadChat()));
 })();
