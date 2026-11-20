@@ -553,7 +553,7 @@
           : b.type === 'task' && b.ref
             ? this.taskHtml(b)
           : b.type === 'image'
-            ? `<div class="bc image-block" tabindex="0" data-image="${escH(b.src)}"><img src="${escH(this.opts.imageSrc ? this.opts.imageSrc(b.src) : b.src)}" alt="${escH(b.alt || '')}" draggable="false"></div>`
+            ? `<div class="bc image-block" tabindex="0" data-image="${escH(b.src)}"><img src="${escH(this.opts.imageSrc ? this.opts.imageSrc(b.src) : b.src)}" alt="${escH(b.alt || '')}" draggable="false">${this.opts.imageDelete ? '<button class="img-del" data-img-del title="Remove this picture">×</button>' : ''}</div>`
           : `<div class="bc" contenteditable="true" spellcheck="${b.type === 'code' ? 'false' : 'true'}" data-ph="${PLACEHOLDER[kind] || ''}">${b.type === 'code' ? escH(b.text) : mdToHtml(b.text)}</div>`;
       const kids =
         b.type === 'toggle' && b.open
@@ -720,6 +720,7 @@
         }
         if (e.key === 'Backspace' || e.key === 'Delete') {
           e.preventDefault();
+          if (el.classList.contains('image-block')) return this.deleteBlocks([this.find(id).block]); // (a picture: gone in one press; ⌘Z brings it back)
           return this.select([id]);
         }
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') return this.step(e, this.find(id).block, e.key === 'ArrowUp' ? -1 : 1);
@@ -854,6 +855,12 @@
       const flat = this.flat();
       const prev = flat[flat.indexOf(b) - 1];
       if (!prev) return;
+      if (['image', 'page', 'task'].includes(prev.type)) {
+        if (!b.text) this.remove(b.id);
+        this.render();
+        this.changed();
+        return this.select([prev.id]);
+      }
       if (prev.type === 'divider') {
         this.remove(prev.id);
         this.render();
@@ -1007,7 +1014,9 @@
       this.render();
       this.snap();
       this.changed();
-      if (after && this.find(after.id)) this.focus(after.id, 0);
+      if (after && this.find(after.id)) return this.focus(after.id, 0);
+      const last = this.flat().pop(); // (it was the last block: on to the end of what's above)
+      if (last) this.focus(last.id, Infinity);
     }
     onMouseDown(e) {
       if (e.target.closest('.blk-gutter') || e.button !== 0) return;
@@ -1479,6 +1488,11 @@
       if (Date.now() - (this.bandAt || 0) < 400) return; // the end of a rubber-band selection
       const blkEl = e.target.closest('.blk');
       const id = blkEl?.dataset.id;
+      if (e.target.closest('[data-img-del]') && id) {
+        e.preventDefault();
+        this.snap();
+        return this.deleteBlocks([this.find(id).block]);
+      }
       if (e.target.closest('[data-check]')) {
         const b = this.find(id).block;
         b.checked = !b.checked;
